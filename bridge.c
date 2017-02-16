@@ -58,9 +58,10 @@ main()
 		// TODO check for errno and break loop
 		recvfrom(sockfd, buf, BUFFLEN, 0,
 			(struct sockaddr *)&sockaddr_recv, &recvlen);
-		//TODO check for IpBridge and only print those IPs
-		printf("Received packet from %s:%d\n", 
-			inet_ntoa(sockaddr_recv.sin_addr), ntohs(sockaddr_recv.sin_port));
+		if (strstr(buf, "IpBridge") != NULL) 
+			printf("Received packet from %s:%d\n", 
+				inet_ntoa(sockaddr_recv.sin_addr),
+					ntohs(sockaddr_recv.sin_port));
 	}
 	return(0);
 }
