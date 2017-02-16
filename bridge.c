@@ -1,34 +1,55 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <uv.h>
+#include <strings.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
-int main() {
-	uv_loop_t *loop;
-	uv_udp_t sock;
-	struct sockaddr_in addr;
+
+#define BUFFLEN	512
+
+// Bridge discovery packet from Hue Documentation
+char *msearch = "M-SEARCH * HTTP/1.1\r\n"
+		"HOST:239.255.255.250:1900\r\n"
+		"MAN:\"ssdp:discover\"\r\n"
+		"ST:ssdp:all\r\n"
+		"MX:1"; 
+
+
+static void
+fatal(char *e)
+{
+	perror(e);
+	exit(1);
+}
+int
+main()
+{
+	int sockfd;
+	struct sockaddr_in sockaddr_bind, sockaddr_send, sockaddr_recv;
 	
-	loop = uv_default_loop();
+	if((sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1) 
+		fatal("Failed to create socket");
 	
-	uv_udp_init(loop, &sock);
-	uv_ip4_addr("0.0.0.0", 0, &addr);
-	uv_udp_bind(&sock, (const struct sockaddr *)&addr, 0);
+	// Setup sockaddr's
+	bzero(&sockaddr_bind, sizeof(sockaddr_bind));	
+	sockaddr_bind.sin_family = AF_INET;
+	sockaddr_bind.sin_port = htons(0);
+	sockaddr_bind.sin_addr.s_addr = htonl(INADDR_ANY);
 
-	// Bridge discovery packet from Hue Documentation
-	char *msearch = "M-SEARCH * HTTP/1.1\r\n"
-                	"HOST:239.255.255.250:1900\r\n"
-                	"MAN:\"ssdp:discover\"\r\n"
-                	"ST:ssdp:all\r\n"
-                	"MX:1"; 
+	bzero(&sockaddr_send, sizeof(sockaddr_send));	
+	sockaddr_send.sin_family = AF_INET;
+	sockaddr_send.sin_port = htons(1900);
+	sockaddr_send.sin_addr.s_addr = inet_addr("239.255.255.250");
 
-	uv_udp_send_t send_req;
-	uv_buf_t discover_packet;
-	discover_packet = uv_buf_init(msearch, strlen(msearch));
-
-	struct sockaddr_in send_addr;
-	uv_ip4_addr("239.255.255.250", 1900, &send_addr);
-	uv_udp_send(&send_req, &sock, &discover_packet, 1,
-		(const struct sockaddr *)&send_addr, NULL);
-
+	if (bind(sockfd, (struct sockaddr *)&sockaddr_bind,
+				sizeof(sockaddr_bind)) == -1)
+		fatal("Failed to bind socket");
 	
-	return uv_run(loop, UV_RUN_DEFAULT);
+	if (sendto(sockfd, msearch, strlen(msearch), 0, 
+		(struct sockaddr *)&sockaddr_send, sizeof(sockaddr_send)) == -1)
+		fatal("Failed to send discovery packet");
+
+	return(0);
 }
