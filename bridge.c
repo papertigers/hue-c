@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <strings.h>
+#include <errno.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -27,9 +28,11 @@ int
 main()
 {
 	int sockfd;
+	int len;
+	char buf[BUFFLEN];
 	struct sockaddr_in sockaddr_bind, sockaddr_send, sockaddr_recv;
 	socklen_t recvlen = sizeof(sockaddr_recv);
-	char buf[BUFFLEN];
+	struct timeval tv;
 
 	if((sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1)
 		fatal("Failed to create socket");
@@ -53,15 +56,25 @@ main()
 		(struct sockaddr *)&sockaddr_send, sizeof(sockaddr_send)) == -1)
 		fatal("Failed to send discovery packet");
 
-	// TODO Set SO_RCVTIMEO with fcntl
+	// TODO verify use of SO_RCVTIMEO
+	bzero(&tv, sizeof(tv));
+	tv.tv_sec = 5;
+	setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(struct timeval));
 	while(1) {
-		// TODO check for errno and break loop
-		recvfrom(sockfd, buf, BUFFLEN, 0,
-			(struct sockaddr *)&sockaddr_recv, &recvlen);
+		if ((len = recvfrom(sockfd, buf, BUFFLEN, 0,
+			(struct sockaddr *)&sockaddr_recv, &recvlen)) == -1) {
+			switch (errno) {
+				case EWOULDBLOCK:
+					goto out;
+				default:
+					fatal("Failed to read data from socket");
+			}
+		}
 		if (strstr(buf, "IpBridge") != NULL)
 			printf("Received packet from %s:%d\n",
 				inet_ntoa(sockaddr_recv.sin_addr),
 					ntohs(sockaddr_recv.sin_port));
 	}
+out:
 	return(0);
 }
